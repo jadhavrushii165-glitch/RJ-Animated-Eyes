@@ -1,3 +1,4 @@
+
 /***************************************************************
  * RJ Animated Eyes
  *
@@ -6,10 +7,10 @@
  * in the upstream source files. See LICENSE.
  *
  * RJ modifications:
- * - SH1106 128x64 display object, initialized on SDA 21 / SCL 22
- * - TTP223 touch input on GPIO 4 with edge detection/debounce
- * - Eight-expression touch cycle in the requested order
- * - Manual expression selection; random emotion switching disabled
+ * - SH1106 128x64 display, SDA 21 / SCL 22
+ * - TTP223 touch input on GPIO 4 with debounce
+ * - Eight-expression touch cycle
+ * - Manual expression selection
  * - Random idle gaze and automatic blinking retained
  ***************************************************************/
 
@@ -33,13 +34,13 @@ static constexpr uint16_t EYE_SIZE = 40;
 
 Face* face = nullptr;
 
-// Requested order: Natural -> Happy -> Glee -> Furious -> Sleepy ->
+// Natural -> Happy -> Glee -> Furious -> Sleepy ->
 // Skeptic -> Annoyed -> Worried -> Natural.
 static void showExpression(uint8_t index) {
   if (face == nullptr) return;
 
   switch (index % 8) {
-    case 0: face->Expression.GoTo_Normal();  break; // Natural
+    case 0: face->Expression.GoTo_Normal();  break;
     case 1: face->Expression.GoTo_Happy();   break;
     case 2: face->Expression.GoTo_Glee();    break;
     case 3: face->Expression.GoTo_Furious(); break;
@@ -57,7 +58,7 @@ static uint32_t rawChangeAt = 0;
 
 static void updateTouch() {
   const uint32_t now = millis();
-  const bool raw = (digitalRead(TOUCH_PIN) == HIGH); // TTP223 active HIGH
+  const bool raw = (digitalRead(TOUCH_PIN) == HIGH);
 
   if (raw != lastRawTouch) {
     lastRawTouch = raw;
@@ -68,8 +69,7 @@ static void updateTouch() {
       raw != stableTouch) {
     stableTouch = raw;
 
-    // Advance only on the debounced rising edge. Holding the pad does not
-    // repeat; a fresh touch is required for the next expression.
+    // Advance only on a debounced rising edge.
     if (stableTouch) {
       currentExpression = (currentExpression + 1) % 8;
       showExpression(currentExpression);
@@ -82,10 +82,8 @@ void setup() {
 
   pinMode(TOUCH_PIN, INPUT);
 
-  // Keep the exact I2C pin assignment supplied for the ESP32 DevKit.
   Wire.begin(21, 22);
 
-  // U8g2 uses an 8-bit address; 0x3C is the common 7-bit OLED address.
   oled.setI2CAddress(0x3C << 1);
   oled.begin();
   oled.clearBuffer();
@@ -93,22 +91,28 @@ void setup() {
 
   randomSeed((uint32_t)micros());
 
-  // Construct the upstream face/eye engine after the display is initialized.
+  // Construct the face engine.
   face = new Face(DISPLAY_WIDTH, DISPLAY_HEIGHT, EYE_SIZE);
 
-  // Touch controls expressions, so do not allow the autonomous behaviour
-  // roulette to override the selected expression.
+  // IMPORTANT: Initialize both eyes before the first draw
+  // and before starting the initial expression transition.
+  face->LeftEye.ApplyPreset(Preset_Normal);
+  face->RightEye.ApplyPreset(Preset_Normal);
+
+  // Touch controls expressions; disable autonomous emotion changes.
   face->RandomBehavior = false;
 
-  // Preserve original engine features: spontaneous idle gaze and blinking.
+  // Preserve idle gaze and automatic blinking.
   face->RandomLook = true;
   face->RandomBlink = true;
   face->Blink.Timer.SetIntervalMillis(4000);
 
   currentExpression = 0;
+
+  // Keep the normal expression transition.
   face->Expression.GoTo_Normal();
 
-  // Avoid treating a touch already held during boot as a new press.
+  // Avoid treating a touch held during boot as a new press.
   stableTouch = (digitalRead(TOUCH_PIN) == HIGH);
   lastRawTouch = stableTouch;
   rawChangeAt = millis();
@@ -117,8 +121,6 @@ void setup() {
 void loop() {
   updateTouch();
 
-  // Non-blocking continuous update: original engine advances transitions,
-  // pupil transformations, eye variations, blink animation and drawing.
   if (face != nullptr) {
     face->Update();
   }
