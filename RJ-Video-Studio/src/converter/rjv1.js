@@ -155,3 +155,33 @@ export function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
+
+/** Validate an RJV1 file before library import or device transfer. */
+export function validateRJV1(input) {
+  const bytes = input instanceof Uint8Array ? input : input instanceof ArrayBuffer ? new Uint8Array(input) : null;
+  if (!bytes) return { valid: false, error: 'Expected an ArrayBuffer or Uint8Array.' };
+  if (bytes.byteLength < RJV1.HEADER_SIZE) return { valid: false, error: 'File is shorter than the RJV1 header.' };
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+  if (magic !== 'RJV1') return { valid: false, error: 'Invalid RJV1 magic signature.' };
+  if (view.getUint8(4) !== RJV1.VERSION) return { valid: false, error: 'Unsupported RJV1 version.' };
+  const headerSize = view.getUint8(5);
+  const width = view.getUint16(6, true);
+  const height = view.getUint16(8, true);
+  const fps = view.getUint8(10);
+  const pixelFormat = view.getUint8(11);
+  const frameCount = view.getUint32(12, true);
+  const frameSize = view.getUint32(16, true);
+  const durationMs = view.getUint32(20, true);
+  if (headerSize !== RJV1.HEADER_SIZE) return { valid: false, error: 'Unsupported RJV1 header size.' };
+  if (width !== RJV1.WIDTH || height !== RJV1.HEIGHT) return { valid: false, error: 'RJV1 dimensions must be 128x64.' };
+  if (![1, 2, 5, 10].includes(fps)) return { valid: false, error: 'Unsupported RJV1 frame rate.' };
+  if (pixelFormat !== RJV1.PIXEL_FORMAT_MONO_1BPP) return { valid: false, error: 'Unsupported RJV1 pixel format.' };
+  if (frameCount < 1 || frameCount > RJV1.MAX_FRAMES) return { valid: false, error: 'RJV1 frame count is outside the supported range.' };
+  if (frameSize !== RJV1.FRAME_SIZE) return { valid: false, error: 'RJV1 frame size must be 1024 bytes.' };
+  if (durationMs < 1 || durationMs > RJV1.MAX_DURATION_SECONDS * 1000) return { valid: false, error: 'RJV1 duration is outside the supported range.' };
+  const expectedSize = headerSize + frameCount * frameSize;
+  if (bytes.byteLength !== expectedSize) return { valid: false, error: 'RJV1 file length does not match its frame count.' };
+  const videoId = Array.from(bytes.subarray(32, 40), (value) => value.toString(16).padStart(2, '0')).join('');
+  return { valid: true, headerSize, width, height, fps, frameCount, frameSize, durationMs, videoId, fileSize: bytes.byteLength };
+}
