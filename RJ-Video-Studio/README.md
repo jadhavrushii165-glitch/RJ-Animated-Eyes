@@ -11,9 +11,10 @@ npm install
 npm run dev
 ```
 
-Create a production build:
+Run the RJV1 structural validation tests and create a production build:
 
 ```bash
+npm test
 npm run build
 npm run preview
 ```
@@ -28,6 +29,7 @@ npm run preview
 - Floyd–Steinberg monochrome dithering
 - 1-bit, MSB-first, row-major pixel packing
 - RJV1 40-byte header with a random 8-byte Video ID
+- Validate RJV1 headers, supported settings, frame payload size, and Video ID
 - Download the generated `.rjv` file
 - Source processing remains local in the browser
 
