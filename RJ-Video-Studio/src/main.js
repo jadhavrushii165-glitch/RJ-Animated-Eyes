@@ -1,5 +1,6 @@
 import './style.css';
-import { convertVideoToRJV1, ditherAndPack, formatBytes, makeOutputName } from './converter/rjv1.js';
+import { encodeGrayFrames, formatBytes, makeOutputName, validateRJV1 } from './converter/rjv1.js';
+import { decodeGrayFramesWithFFmpeg, inspectVideoWithFFmpeg } from './converter/ffmpeg.js';
 
 const app = document.querySelector('#app');
 
@@ -132,6 +133,8 @@ let sourceUrl = null;
 let outputBlob = null;
 let outputName = '';
 let sourceDuration = 0;
+let ffmpegSource = null;
+let previewUrl = null;
 
 function setError(message) {
   $('#error-message').textContent = message;
@@ -182,47 +185,87 @@ function drawOledPreview() {
 async function loadFile(file) {
   clearError();
   if (!file) return;
-  if (!file.type.startsWith('video/') && !/\.(mp4|mov|webm|m4v|avi)$/i.test(file.name)) {
-    setError('Please choose a supported video file.');
+  if (!file.type.startsWith('video/') && !/\.(mp4|mov|webm|m4v|avi|mkv|mpeg|mpg|3gp|ts|mts|m2ts|flv|wmv)$/i.test(file.name)) {
+    setError('Please choose a video file.');
     return;
   }
   if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
   sourceFile = file;
   outputBlob = null;
+  ffmpegSource = null;
+  sourceDuration = 0;
   sourceUrl = URL.createObjectURL(file);
   decoder.src = sourceUrl;
   $('#source-details').classList.remove('hidden');
   $('#file-name').textContent = file.name;
-  $('#file-info').textContent = `${formatBytes(file.size)} · Reading duration…`;
+  $('#file-info').textContent = formatBytes(file.size) + ' · Preparing FFmpeg…';
   $('#result').classList.add('hidden');
   $('#convert').disabled = true;
-  $('#progress-wrap').classList.add('hidden');
-  originalFrame.innerHTML = '<span>Loading preview…</span>';
-
-  decoder.onloadedmetadata = () => {
-    sourceDuration = decoder.duration;
-    if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) {
-      setError('This video has an invalid duration.');
-      return;
-    }
+  $('#progress-wrap').classList.remove('hidden');
+  $('#progress-label').textContent = 'Loading FFmpeg WebAssembly…';
+  $('#progress-value').textContent = '—';
+  $('#progress-bar').style.width = '0%';
+  originalFrame.innerHTML = '<span>Loading local FFmpeg decoder…</span>';
+  try {
+    const inspected = await inspectVideoWithFFmpeg(file, (message) => { $('#progress-label').textContent = message; });
+    if (sourceFile !== file) { URL.revokeObjectURL(inspected.previewUrl); return; }
+    ffmpegSource = inspected;
+    sourceDuration = inspected.duration;
+    previewUrl = inspected.previewUrl;
     $('#file-info').textContent = formatBytes(file.size) + ' · ' + sourceDuration.toFixed(1) + ' seconds';
     updateEstimate();
-  };
-  decoder.onloadeddata = () => {
-    if (!sourceFile || !decoder.videoWidth) return;
-    $('#convert').disabled = false;
+    const preview = document.createElement('img');
+    preview.src = previewUrl;
+    preview.alt = 'First frame decoded by FFmpeg';
+    preview.style.cssText = 'width:100%;height:100%;object-fit:contain';
     originalFrame.innerHTML = '';
-    const video = document.createElement('video');
-    video.src = sourceUrl;
-    video.muted = true;
-    video.playsInline = true;
-    video.controls = true;
-    video.preload = 'metadata';
-    originalFrame.append(video);
-    drawOledPreview();
-    $('#preview-note').textContent = 'Fit mode keeps the complete picture. Black bars fill unused display space.';
-  };
-  decoder.onerror = () => setError('Your browser could not decode this video. Try an MP4 or WebM file.');
+    originalFrame.append(preview);
+    drawOledPreviewFromImage(preview);
+    $('#preview-note').textContent = 'FFmpeg decoded this frame locally. Fit mode preserves the complete picture with black bars.';
+    $('#progress-wrap').classList.add('hidden');
+    $('#convert').disabled = false;
+  } catch (error) {
+    $('#progress-wrap').classList.add('hidden');
+    setError(error instanceof Error ? error.message : 'Could not decode this video with FFmpeg.');
+  }
+}
+
+function drawOledPreviewFromImage(image) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 64;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.fillStyle = '#000';
+  context.fillRect(0, 0, 128, 64);
+  const scale = Math.min(128 / image.naturalWidth, 64 / image.naturalHeight);
+  const width = Math.round(image.naturalWidth * scale);
+  const height = Math.round(image.naturalHeight * scale);
+  context.drawImage(image, Math.floor((128 - width) / 2), Math.floor((64 - height) / 2), width, height);
+  const data = context.getImageData(0, 0, 128, 64);
+  const gray = new Float32Array(128 * 64);
+  const pixels = new Uint8Array(128 * 64);
+  for (let i = 0; i < gray.length; i++) {
+    const p = i * 4;
+    gray[i] = data.data[p] * 0.299 + data.data[p + 1] * 0.587 + data.data[p + 2] * 0.114;
+  }
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 128; x++) {
+    const i = y * 128 + x, old = gray[i], value = old >= 128 ? 255 : 0, error = old - value;
+    pixels[i] = value ? 1 : 0;
+    if (x < 127) gray[i + 1] += error * 7 / 16;
+    if (y < 63) {
+      if (x > 0) gray[i + 127] += error * 3 / 16;
+      gray[i + 128] += error * 5 / 16;
+      if (x < 127) gray[i + 129] += error / 16;
+    }
+  }
+  const output = new ImageData(128, 64);
+  for (let i = 0; i < pixels.length; i++) {
+    const value = pixels[i] ? 255 : 0, p = i * 4;
+    output.data[p] = output.data[p + 1] = output.data[p + 2] = value;
+    output.data[p + 3] = 255;
+  }
+  oledContext.putImageData(output, 0, 0);
 }
 
 input.addEventListener('change', (event) => loadFile(event.target.files?.[0]));
@@ -231,6 +274,9 @@ $('#remove-video').addEventListener('click', () => {
   sourceFile = null;
   outputBlob = null;
   sourceDuration = 0;
+  ffmpegSource = null;
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = null;
   input.value = '';
   if (sourceUrl) URL.revokeObjectURL(sourceUrl);
   sourceUrl = null;
@@ -266,7 +312,7 @@ dropzone.addEventListener('drop', (event) => {
 });
 
 $('#convert').addEventListener('click', async () => {
-  if (!sourceFile || !sourceUrl || !sourceDuration) return;
+  if (!sourceFile || !ffmpegSource || !sourceDuration) return;
   clearError();
   $('#convert').disabled = true;
   $('#result').classList.add('hidden');
@@ -274,42 +320,46 @@ $('#convert').addEventListener('click', async () => {
   const fps = Number(fpsSelect.value);
   outputName = makeOutputName(sourceFile.name);
   try {
-    outputBlob = await convertVideoToRJV1(decoder, {
+    const grayFrames = await decodeGrayFramesWithFFmpeg(ffmpegSource.ffmpeg, ffmpegSource.inputName, fps, (progress, message) => {
+      $('#progress-label').textContent = message;
+      $('#progress-value').textContent = Math.round(progress * 100) + '%';
+      $('#progress-bar').style.width = Math.round(progress * 100) + '%';
+    });
+    const frameCount = grayFrames.length / (128 * 64);
+    outputBlob = encodeGrayFrames(grayFrames, {
       fps,
-      duration: Math.min(sourceDuration, 60),
+      durationMs: Math.min(60000, Math.round(sourceDuration * 1000)),
       onProgress: (done, total) => {
-        const percent = Math.round((done / total) * 100);
-        $('#progress-bar').style.width = `${percent}%`;
-        $('#progress-value').textContent = `${percent}%`;
-        $('#progress-label').textContent = `Encoding frame ${done} of ${total}`;
+        const percent = Math.round(done / total * 100);
+        $('#progress-label').textContent = 'Packing frame ' + done + ' of ' + total;
+        $('#progress-value').textContent = percent + '%';
+        $('#progress-bar').style.width = percent + '%';
       },
       onFrame: (pixels) => {
         const image = new ImageData(128, 64);
         for (let i = 0; i < pixels.length; i++) {
-          const value = pixels[i] ? 255 : 0;
-          const offset = i * 4;
-          image.data[offset] = value;
-          image.data[offset + 1] = value;
-          image.data[offset + 2] = value;
-          image.data[offset + 3] = 255;
+          const value = pixels[i] ? 255 : 0, p = i * 4;
+          image.data[p] = image.data[p + 1] = image.data[p + 2] = value;
+          image.data[p + 3] = 255;
         }
         oledContext.putImageData(image, 0, 0);
       }
     });
+    const validation = validateRJV1(new Uint8Array(await outputBlob.arrayBuffer()));
+    if (!validation.valid) throw new Error('Generated RJV1 file failed validation: ' + validation.error);
     $('#result-name').textContent = outputName;
-    $('#result-info').textContent = `${formatBytes(outputBlob.size)} · RJV1 · ${fps} FPS`;
+    $('#result-info').textContent = formatBytes(outputBlob.size) + ' · ' + frameCount + ' frames · ' + fps + ' FPS · ID ' + validation.videoId;
     $('#result').classList.remove('hidden');
-    $('#progress-label').textContent = 'Conversion complete';
+    $('#progress-label').textContent = 'Conversion and validation complete';
     $('#progress-bar').style.width = '100%';
     $('#progress-value').textContent = '100%';
-    drawOledPreview();
   } catch (error) {
     setError(error instanceof Error ? error.message : 'Conversion failed. Please try another video.');
   } finally {
-    $('#convert').disabled = false;
+    $('#progress-wrap').classList.add('hidden');
+    $('#convert').disabled = !ffmpegSource;
   }
 });
-
 $('#download').addEventListener('click', () => {
   if (!outputBlob) return;
   const url = URL.createObjectURL(outputBlob);
