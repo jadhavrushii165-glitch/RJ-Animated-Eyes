@@ -60,7 +60,7 @@ test('formats output filenames and byte sizes', () => {
 
 test('encodes FFmpeg grayscale frames into a valid RJV1 file', () => {
   const gray = new Uint8Array(128 * 64 * 2).fill(255);
-  const blob = encodeGrayFrames(gray, { fps: 2, durationMs: 1000 });
+  const blob = await encodeGrayFrames(gray, { fps: 2, durationMs: 1000 });
   assert.equal(blob.size, 40 + 2 * 1024);
   return blob.arrayBuffer().then((buffer) => {
     const result = validateRJV1(new Uint8Array(buffer));
