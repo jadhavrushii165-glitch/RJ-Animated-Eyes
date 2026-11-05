@@ -187,7 +187,7 @@ export function validateRJV1(input) {
 }
 
 /** Pack FFmpeg's 8-bit grayscale raw frames into an RJV1 file. */
-export function encodeGrayFrames(grayFrames, { fps, durationMs, onProgress = () => {}, onFrame = () => {} }) {
+export async function encodeGrayFrames(grayFrames, { fps, durationMs, onProgress = () => {}, onFrame = () => {} }) {
   if (!(grayFrames instanceof Uint8Array)) throw new Error('Expected grayscale frame bytes.');
   const pixelsPerFrame = RJV1.WIDTH * RJV1.HEIGHT;
   if (!grayFrames.length || grayFrames.length % pixelsPerFrame !== 0) throw new Error('Decoded frame data is incomplete.');
@@ -214,6 +214,7 @@ export function encodeGrayFrames(grayFrames, { fps, durationMs, onProgress = () 
     output.set(packed, RJV1.HEADER_SIZE + frame * RJV1.FRAME_SIZE);
     onFrame(pixels);
     onProgress(frame + 1, frameCount);
+    if (frame % 8 === 7) await new Promise((resolve) => setTimeout(resolve, 0));
   }
   return new Blob([output], { type: 'application/octet-stream' });
 }
