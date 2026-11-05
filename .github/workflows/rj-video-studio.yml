@@ -1,0 +1,34 @@
+name: RJ Video Studio
+
+on:
+  push:
+    branches: [Development]
+    paths:
+      - 'RJ-Video-Studio/**'
+      - '.github/workflows/rj-video-studio.yml'
+  pull_request:
+    paths:
+      - 'RJ-Video-Studio/**'
+      - '.github/workflows/rj-video-studio.yml'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: RJ-Video-Studio
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: RJ-Video-Studio/package-lock.json
+      - name: Install dependencies
+        run: npm install
+      - name: Run RJV1 tests
+        run: npm test
+      - name: Build production app
+        run: npm run build
