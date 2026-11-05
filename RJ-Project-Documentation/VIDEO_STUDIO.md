@@ -144,3 +144,8 @@ The device player is a separate module until standalone tests pass. Intended beh
 - Keep OLED on during playback.
 
 The current animated-eyes firmware must remain preserved while the player is developed.
+
+
+## Implementation update — FFmpeg.wasm
+
+The first RJ Video Studio prototype now integrates FFmpeg.wasm for metadata inspection, first-frame preview, grayscale frame extraction, and RJV1 encoding in the browser. FFmpeg core assets load from jsDelivr on first use, so an internet connection is required to initialize the decoder. Browser execution and ESP32 playback still require real-world validation.
