@@ -58,14 +58,13 @@ test('formats output filenames and byte sizes', () => {
   assert.equal(formatBytes(2048), '2.0 KB');
 });
 
-test('encodes FFmpeg grayscale frames into a valid RJV1 file', () => {
+test('encodes FFmpeg grayscale frames into a valid RJV1 file', async () => {
   const gray = new Uint8Array(128 * 64 * 2).fill(255);
   const blob = await encodeGrayFrames(gray, { fps: 2, durationMs: 1000 });
   assert.equal(blob.size, 40 + 2 * 1024);
-  return blob.arrayBuffer().then((buffer) => {
-    const result = validateRJV1(new Uint8Array(buffer));
-    assert.equal(result.valid, true);
-    assert.equal(result.frameCount, 2);
-    assert.equal(result.fps, 2);
-  });
+  const buffer = await blob.arrayBuffer();
+  const result = validateRJV1(new Uint8Array(buffer));
+  assert.equal(result.valid, true);
+  assert.equal(result.frameCount, 2);
+  assert.equal(result.fps, 2);
 });
