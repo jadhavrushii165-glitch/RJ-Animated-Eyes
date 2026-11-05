@@ -1,5 +1,5 @@
 import './style.css';
-import { encodeGrayFrames, formatBytes, makeOutputName, validateRJV1 } from './converter/rjv1.js';
+import { ditherAndPack, encodeGrayFrames, formatBytes, makeOutputName, validateRJV1 } from './converter/rjv1.js';
 import { decodeGrayFramesWithFFmpeg, inspectVideoWithFFmpeg } from './converter/ffmpeg.js';
 
 const app = document.querySelector('#app');
@@ -156,32 +156,6 @@ function updateEstimate() {
   $('#estimate-detail').textContent = `${frames} frames · ${duration.toFixed(1)} sec · ${fps} FPS${sourceDuration > 60 ? ' · first 60 seconds only' : ''}`;
 }
 
-function drawOledPreview() {
-  const offscreen = document.createElement('canvas');
-  offscreen.width = 128;
-  offscreen.height = 64;
-  const ctx = offscreen.getContext('2d', { willReadFrequently: true });
-  const scale = Math.min(128 / decoder.videoWidth, 64 / decoder.videoHeight);
-  const width = Math.round(decoder.videoWidth * scale);
-  const height = Math.round(decoder.videoHeight * scale);
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, 128, 64);
-  ctx.drawImage(decoder, Math.floor((128 - width) / 2), Math.floor((64 - height) / 2), width, height);
-  const image = ctx.getImageData(0, 0, 128, 64);
-  const { pixels } = ditherAndPack(image);
-  const preview = new ImageData(128, 64);
-  for (let i = 0; i < pixels.length; i++) {
-    const value = pixels[i] ? 255 : 0;
-    const offset = i * 4;
-    preview.data[offset] = value;
-    preview.data[offset + 1] = value;
-    preview.data[offset + 2] = value;
-    preview.data[offset + 3] = 255;
-  }
-  oledContext.clearRect(0, 0, 128, 64);
-  oledContext.putImageData(preview, 0, 0);
-}
-
 async function loadFile(file) {
   clearError();
   if (!file) return;
@@ -242,23 +216,7 @@ function drawOledPreviewFromImage(image) {
   const width = Math.round(image.naturalWidth * scale);
   const height = Math.round(image.naturalHeight * scale);
   context.drawImage(image, Math.floor((128 - width) / 2), Math.floor((64 - height) / 2), width, height);
-  const data = context.getImageData(0, 0, 128, 64);
-  const gray = new Float32Array(128 * 64);
-  const pixels = new Uint8Array(128 * 64);
-  for (let i = 0; i < gray.length; i++) {
-    const p = i * 4;
-    gray[i] = data.data[p] * 0.299 + data.data[p + 1] * 0.587 + data.data[p + 2] * 0.114;
-  }
-  for (let y = 0; y < 64; y++) for (let x = 0; x < 128; x++) {
-    const i = y * 128 + x, old = gray[i], value = old >= 128 ? 255 : 0, error = old - value;
-    pixels[i] = value ? 1 : 0;
-    if (x < 127) gray[i + 1] += error * 7 / 16;
-    if (y < 63) {
-      if (x > 0) gray[i + 127] += error * 3 / 16;
-      gray[i + 128] += error * 5 / 16;
-      if (x < 127) gray[i + 129] += error / 16;
-    }
-  }
+  const { pixels } = ditherAndPack(context.getImageData(0, 0, 128, 64));
   const output = new ImageData(128, 64);
   for (let i = 0; i < pixels.length; i++) {
     const value = pixels[i] ? 255 : 0, p = i * 4;
@@ -326,7 +284,7 @@ $('#convert').addEventListener('click', async () => {
       $('#progress-bar').style.width = Math.round(progress * 100) + '%';
     });
     const frameCount = grayFrames.length / (128 * 64);
-    outputBlob = encodeGrayFrames(grayFrames, {
+    outputBlob = await encodeGrayFrames(grayFrames, {
       fps,
       durationMs: Math.min(60000, Math.round(sourceDuration * 1000)),
       onProgress: (done, total) => {
