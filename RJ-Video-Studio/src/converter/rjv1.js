@@ -43,7 +43,7 @@ function renderFitFrame(video, canvas, context) {
   return context.getImageData(0, 0, RJV1.WIDTH, RJV1.HEIGHT);
 }
 
-function ditherAndPack(imageData) {
+export function ditherAndPack(imageData) {
   const width = RJV1.WIDTH;
   const height = RJV1.HEIGHT;
   const gray = new Float32Array(width * height);
