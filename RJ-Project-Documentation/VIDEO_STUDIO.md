@@ -56,7 +56,7 @@ The original 32-byte header fields were:
 | Reserved | 6 bytes |
 | **Original total** | **32 bytes** |
 
-The owner subsequently specified an additional random 8-byte Video ID, making the target header 40 bytes. **Exact offsets and the placement of the Video ID must be frozen in a versioned binary-format document before encoder/player implementation.** Do not silently assume offsets.
+The owner subsequently specified an additional random 8-byte Video ID, making the header 40 bytes. The current prototype places this ID at bytes 32–39; bytes 26–31 remain reserved. This is the prototype's explicit offset choice and still requires confirmation against the ESP32 decoder before the format is treated as production-frozen.
 
 ### Validation
 
