@@ -23,7 +23,7 @@ npm run preview
 
 - Responsive desktop/mobile interface
 - Select or drag in a video
-- Decode videos supported by the current browser
+- Decode videos locally with FFmpeg.wasm (input compatibility depends on FFmpeg's enabled codecs)
 - 1, 2, 5, or 10 FPS output
 - Fit the full source frame into 128×64 with black letterbox/pillarbox
 - Floyd–Steinberg monochrome dithering
@@ -35,8 +35,8 @@ npm run preview
 
 ## Important limitations
 
-This is the first converter prototype, not the complete product. It currently uses the browser's native video decoder; file compatibility therefore depends on the browser and installed codecs. FFmpeg.wasm integration is a planned next step for broader input-format support.
+This is the first converter prototype, not the complete product. It now uses FFmpeg.wasm in the browser to inspect video duration, decode a first-frame preview, extract grayscale frames, and encode RJV1 without uploading the source video. FFmpeg core files are loaded from jsDelivr on first use, so an internet connection is required to initialize the decoder. Actual format support depends on the FFmpeg core build and input codec.
 
 The unified Computer/Cloud/RJ microSD library, Supabase authentication/storage, cloud thumbnails, device registration, local transfer, and RJ synchronization are not implemented in this prototype.
 
-The converter has not yet been built and tested in a real browser session or validated against the ESP32 player. Do not treat the format as production-frozen until encoder/decoder test vectors and hardware playback tests pass.
+The converter has not yet been verified in a real browser session or validated against the ESP32 player. The GitHub Actions workflow runs the Node tests and Vite production build; confirm its status before opening the pull request. Do not treat the format as production-frozen until encoder/decoder test vectors and hardware playback tests pass.
