@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RJV1, validateRJV1, formatBytes, makeOutputName } from './rjv1.js';
+import { RJV1, validateRJV1, formatBytes, makeOutputName, encodeGrayFrames } from './rjv1.js';
 
 function makeValidFile() {
   const frameCount = 2;
@@ -56,4 +56,16 @@ test('rejects a wrong frame size', () => {
 test('formats output filenames and byte sizes', () => {
   assert.equal(makeOutputName('Vacation.mp4'), 'Vacation.rjv');
   assert.equal(formatBytes(2048), '2.0 KB');
+});
+
+test('encodes FFmpeg grayscale frames into a valid RJV1 file', () => {
+  const gray = new Uint8Array(128 * 64 * 2).fill(255);
+  const blob = encodeGrayFrames(gray, { fps: 2, durationMs: 1000 });
+  assert.equal(blob.size, 40 + 2 * 1024);
+  return blob.arrayBuffer().then((buffer) => {
+    const result = validateRJV1(new Uint8Array(buffer));
+    assert.equal(result.valid, true);
+    assert.equal(result.frameCount, 2);
+    assert.equal(result.fps, 2);
+  });
 });
