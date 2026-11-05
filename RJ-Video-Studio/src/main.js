@@ -1,5 +1,5 @@
 import './style.css';
-import { convertVideoToRJV1, formatBytes, makeOutputName } from './converter/rjv1.js';
+import { convertVideoToRJV1, ditherAndPack, formatBytes, makeOutputName } from './converter/rjv1.js';
 
 const app = document.querySelector('#app');
 
@@ -165,17 +165,18 @@ function drawOledPreview() {
   ctx.fillRect(0, 0, 128, 64);
   ctx.drawImage(decoder, Math.floor((128 - width) / 2), Math.floor((64 - height) / 2), width, height);
   const image = ctx.getImageData(0, 0, 128, 64);
-  for (let i = 0; i < image.data.length; i += 4) {
-    const gray = Math.round(image.data[i] * 0.299 + image.data[i + 1] * 0.587 + image.data[i + 2] * 0.114);
-    const value = gray >= 128 ? 255 : 0;
-    image.data[i] = value;
-    image.data[i + 1] = value;
-    image.data[i + 2] = value;
-    image.data[i + 3] = 255;
+  const { pixels } = ditherAndPack(image);
+  const preview = new ImageData(128, 64);
+  for (let i = 0; i < pixels.length; i++) {
+    const value = pixels[i] ? 255 : 0;
+    const offset = i * 4;
+    preview.data[offset] = value;
+    preview.data[offset + 1] = value;
+    preview.data[offset + 2] = value;
+    preview.data[offset + 3] = 255;
   }
-  ctx.putImageData(image, 0, 0);
   oledContext.clearRect(0, 0, 128, 64);
-  oledContext.drawImage(offscreen, 0, 0);
+  oledContext.putImageData(preview, 0, 0);
 }
 
 async function loadFile(file) {
