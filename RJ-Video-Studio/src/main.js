@@ -204,13 +204,12 @@ async function loadFile(file) {
       setError('This video has an invalid duration.');
       return;
     }
-    $('#file-info').textContent = `${formatBytes(file.size)} · ${sourceDuration.toFixed(1)} seconds`;
-    $('#convert').disabled = false;
+    $('#file-info').textContent = formatBytes(file.size) + ' · ' + sourceDuration.toFixed(1) + ' seconds';
     updateEstimate();
-    decoder.currentTime = 0;
   };
-  decoder.onseeked = () => {
+  decoder.onloadeddata = () => {
     if (!sourceFile || !decoder.videoWidth) return;
+    $('#convert').disabled = false;
     originalFrame.innerHTML = '';
     const video = document.createElement('video');
     video.src = sourceUrl;
@@ -302,6 +301,7 @@ $('#convert').addEventListener('click', async () => {
     $('#progress-label').textContent = 'Conversion complete';
     $('#progress-bar').style.width = '100%';
     $('#progress-value').textContent = '100%';
+    drawOledPreview();
   } catch (error) {
     setError(error instanceof Error ? error.message : 'Conversion failed. Please try another video.');
   } finally {
