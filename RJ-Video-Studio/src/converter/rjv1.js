@@ -185,3 +185,35 @@ export function validateRJV1(input) {
   const videoId = Array.from(bytes.subarray(32, 40), (value) => value.toString(16).padStart(2, '0')).join('');
   return { valid: true, headerSize, width, height, fps, frameCount, frameSize, durationMs, videoId, fileSize: bytes.byteLength };
 }
+
+/** Pack FFmpeg's 8-bit grayscale raw frames into an RJV1 file. */
+export function encodeGrayFrames(grayFrames, { fps, durationMs, onProgress = () => {}, onFrame = () => {} }) {
+  if (!(grayFrames instanceof Uint8Array)) throw new Error('Expected grayscale frame bytes.');
+  const pixelsPerFrame = RJV1.WIDTH * RJV1.HEIGHT;
+  if (!grayFrames.length || grayFrames.length % pixelsPerFrame !== 0) throw new Error('Decoded frame data is incomplete.');
+  if (![1, 2, 5, 10].includes(fps)) throw new Error('Choose 1, 2, 5, or 10 FPS.');
+  const frameCount = grayFrames.length / pixelsPerFrame;
+  if (frameCount > RJV1.MAX_FRAMES) throw new Error('The decoded video exceeds 600 frames.');
+  const videoId = new Uint8Array(8);
+  crypto.getRandomValues(videoId);
+  const header = createHeader({ fps, frameCount, durationMs: Math.max(1, Math.min(60000, Math.round(durationMs))), videoId });
+  const output = new Uint8Array(RJV1.HEADER_SIZE + frameCount * RJV1.FRAME_SIZE);
+  output.set(header, 0);
+  const rgba = new Uint8ClampedArray(pixelsPerFrame * 4);
+  for (let frame = 0; frame < frameCount; frame++) {
+    const frameStart = frame * pixelsPerFrame;
+    for (let i = 0; i < pixelsPerFrame; i++) {
+      const value = grayFrames[frameStart + i];
+      const p = i * 4;
+      rgba[p] = value;
+      rgba[p + 1] = value;
+      rgba[p + 2] = value;
+      rgba[p + 3] = 255;
+    }
+    const { packed, pixels } = ditherAndPack({ data: rgba });
+    output.set(packed, RJV1.HEADER_SIZE + frame * RJV1.FRAME_SIZE);
+    onFrame(pixels);
+    onProgress(frame + 1, frameCount);
+  }
+  return new Blob([output], { type: 'application/octet-stream' });
+}
